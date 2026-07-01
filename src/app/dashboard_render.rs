@@ -58,6 +58,12 @@ pub struct DashboardFrameView<'a> {
     /// Alerts list. Set by `tui_loop` from
     /// `DashboardRuntimeState::alert_filter`.
     pub alert_filter: Option<&'a str>,
+    /// Restored v3.1.4: optional decorative effects overlay. Rendered
+    /// last so it sits above every other modal.
+    pub fx_overlay: &'a crate::app::fx_overlay::FxOverlay,
+    /// Restored v3.1.4: operator-configured banner text (`[fx] text`).
+    /// Plumbed directly so the renderer doesn't re-read config.
+    pub fx_text: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -180,6 +186,13 @@ pub fn render_dashboard_frame(frame: &mut Frame<'_>, view: DashboardFrameView<'_
 
     if let Some(view) = view.action_explainer.view() {
         crate::ui::action_explainer::render_action_explainer_modal(frame, view);
+    }
+
+    // Restored v3.1.4: decorative effects overlay. Rendered as the
+    // topmost surface so the banner / confetti / matrix sit above every
+    // modal, including pending actions.
+    if let Some(scene) = view.fx_overlay.scene() {
+        crate::ui::fx::render_fx_overlay(frame, scene, view.fx_text);
     }
 }
 

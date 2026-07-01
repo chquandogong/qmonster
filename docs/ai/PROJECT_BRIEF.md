@@ -1,7 +1,7 @@
 # PROJECT_BRIEF
 
 - Project: **Qmonster** — Dr. QUAN's Q + monitoring/master
-- Version: **v3.1.3** (planning doc rev v0.4.0 — header tracks ledger)
+- Version: **v3.1.4** (planning doc rev v0.4.0 — header tracks ledger)
 - **Current reality (read first):** the phase inventory and per-tag table
   below are **historical**. In **v3.0.0 (narrow reduction)** Qmonster was cut
   back to its provider-neutral observe/recommend core — the Metrics / Anomaly

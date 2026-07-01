@@ -13,18 +13,28 @@
 > following subsystems were subsequently **REMOVED** and any present-tense
 > claim about them below is historical only:
 >
-> - the `m` Metrics, `n` Anomaly Events, `i` Token Insights, `a`
+> **v3.1.4 UPDATE:** the `Q` decorative-fx overlay and the `[fx]` config
+> section were **RESTORED** from v2.8.0 (screensaver + prompt-send celebration
+>
+> - `Q` hotkey; `fx.rs`/`fx_state.rs`/`fx_overlay.rs` verbatim, `FX_TARGET_FPS`
+>   60→30, rewired into `tui_loop`/`dashboard_render`). An app-wide panic hook
+>   (`src/app/panic_hook.rs`, restore-terminal + `~/.qmonster/crash.log`) was
+>   also added, and `retention.rs` now prunes `audit_events`/`anomaly_*`/
+>   `cost_usage_events` (previously files + `token_usage_samples` only). The
+>   other removals below stand.
+>
+> * the `m` Metrics, `n` Anomaly Events, `i` Token Insights, `a`
 >   Pending-Actions-batch, and `Q` decorative-fx overlays (the Phase-7
 >   anomaly **detection** and the `--once` digest stay; only the overlays
 >   went);
-> - the Token Insights subsystem entirely — `store/insights.rs`, the
+> * the Token Insights subsystem entirely — `store/insights.rs`, the
 >   `insights` + `rec-engagement` CLI subcommands, the
 >   recommendation-engagement telemetry, and the `[fx]` config section;
-> - the Phase-4 provider-profile recommender — `rules/profiles.rs`,
+> * the Phase-4 provider-profile recommender — `rules/profiles.rs`,
 >   `domain/profile.rs`, `Recommendation.profile`, and
 >   `ui::panels::format_profile_lines` (the opt-in `profile_switch` rule
 >   stays);
-> - all provider enrichment beyond the core-signal tail parsers — the
+> * all provider enrichment beyond the core-signal tail parsers — the
 >   Codex app-server (F-6) reset channel, agy enrichment (footer /
 >   sidefile / transcript → agy is ObserveOnly identification only), and
 >   Gemini `/stats` + `/model` interactive enrichment (Gemini is

@@ -33,9 +33,12 @@
 - **Overlay**: `t`로 target picker, `S`로 settings, `P`로 provider setup,
   `?`로 help, footer 오른쪽 아래 버전 배지를 클릭하면 Git overlay가
   열립니다. (narrow vNext에서 Metrics `m` / Anomaly Events `n` /
-  Pending Actions `a` / Token Insights `i` / decorative fx `Q` 오버레이는
-  제거되었습니다. 현재 상시 오버레이는 `?` Help과 `S` Settings, 그리고
-  optional Git뿐입니다.)
+  Pending Actions `a` / Token Insights `i` 오버레이는 제거되었습니다.
+  **v3.1.4에서 decorative fx `Q` 오버레이(화면 보호기/효과)는 복원**되었습니다 —
+  `[fx]` 설정으로 제어하며 `Q` 수동 실행 / 유휴 화면보호기(sampler·banner·
+  matrix·snow·fireworks·plasma) / 액션 승인 축하로 뜨고, 아무 키·클릭으로
+  닫힙니다. 상시 오버레이는 `?` Help과 `S` Settings, optional Git이며 fx는
+  트리거 시에만 표시됩니다.)
 - **Scroll status**: 주요 스크롤 가능한 modal/overlay와 list-style 창은
   footer/hint에 `scroll x/y · more` 또는 `scroll x/y · END`를 표시해
   더 내려갈 내용이 있는지 바로 알 수 있게 합니다.
@@ -518,6 +521,13 @@ script-low-token 프로파일 *이름*을 추천하는 별개 룰; lever payload
 - `Enter`: session 선택 후 window 단계로 이동, 또는 window 확정
 - `Left/Backspace`: window 단계에서 session 단계로 복귀
 - `?`: help/legend overlay
+- `Q`: decorative fx 오버레이(화면 보호기 / 화면 효과) 열기 —
+  banner/confetti/matrix/snow/fireworks/plasma/sampler. `[fx]` 설정이 켜져
+  있으면 유휴 시 화면보호기로 자동 열리고 prompt-send 승인 시 축하로도 뜹니다.
+  아무 키·마우스 클릭으로 닫힘. 오버레이가 열린 동안에도 tmux 폴링은 계속됩니다
+  (모니터가 눈 감지 않도록). 설정은 TOML `[fx]`
+  (`enabled`/`effect`/`hotkey_enabled`/`screensaver_enabled` +
+  `screensaver_idle_secs`/`celebration_enabled`/`duration_secs`)로 제어.
 - `r`: version drift 재확인
 - `s`: snapshot 저장
 - `u`: Claude pane에서는 statusline 기반 즉시 poll만 요청하고 provider 입력을

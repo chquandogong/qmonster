@@ -47,6 +47,12 @@ fn main() -> anyhow::Result<()> {
         snapshot_writer,
     } = runtime;
 
+    // Install the crash-visibility panic hook now that the storage root
+    // is known: any later panic restores the terminal and records a
+    // post-mortem to <root>/crash.log instead of the process vanishing
+    // silently (which closes / bare-shells the tmux pane with no trace).
+    qmonster::app::panic_hook::install(paths.root().to_path_buf());
+
     if cli.once {
         println!(
             "qmonster paths: {} (source: {:?})",

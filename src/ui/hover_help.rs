@@ -300,13 +300,13 @@ fn footer_key_legend_text_lines(language: HelpLanguage) -> &'static [&'static st
             "Move      ↑/↓ item · PgUp/PgDn page · Home/End · Tab focus",
             "Layout    [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git",
             "Actions   t target · u runtime · s snapshot · y copy · c clear · p accept · d dismiss",
-            "Overlays  S settings · P provider-setup · ? help · q quit",
+            "Overlays  S settings · P provider-setup · Q fx · ? help · q quit",
         ],
         HelpLanguage::En => &[
             "Move      ↑/↓ item · PgUp/PgDn page · Home/End · Tab focus",
             "Layout    [ ] resize · / cycle · = reset · wheel scroll · click select · click severity bulk hide · click version git",
             "Actions   t target · u runtime · s snapshot · y copy · c clear · p accept · d dismiss",
-            "Overlays  S settings · P provider-setup · ? help · q quit",
+            "Overlays  S settings · P provider-setup · Q fx · ? help · q quit",
         ],
     }
 }

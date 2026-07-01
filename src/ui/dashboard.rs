@@ -1235,7 +1235,7 @@ fn footer_chip_span(
 /// shape that pins `p accept` / `d dismiss` placement).
 #[cfg(test)]
 pub(crate) fn footer_keys_text() -> &'static str {
-    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} n anomalies \u{00b7} a actions \u{00b7} ? help \u{00b7} q quit"
+    "[ ] resize \u{00b7} / cycle \u{00b7} = reset \u{00b7} wheel scroll \u{00b7} click select \u{00b7} click severity bulk hide \u{00b7} click version git \u{00b7} \u{2191}/\u{2193} item \u{00b7} PgUp/PgDn page \u{00b7} Home/End \u{00b7} Tab switch \u{00b7} t target \u{00b7} u runtime \u{00b7} s snapshot \u{00b7} y copy \u{00b7} c clear \u{00b7} p accept \u{00b7} d dismiss \u{00b7} S settings \u{00b7} P provider-setup \u{00b7} Q fx \u{00b7} H hover-help \u{00b7} L help-lang \u{00b7} n anomalies \u{00b7} a actions \u{00b7} ? help \u{00b7} q quit"
 }
 
 fn footer_compact_keys_text() -> &'static str {
@@ -1414,6 +1414,12 @@ fn help_lines_for_width(total_width: usize) -> Vec<Line<'static>> {
     lines.extend(help_wrapped_detail_lines(
         "P",
         "open the Provider Setup overlay (read-only) — recommended Claude statusline.sh / Codex /statusline + /status / Gemini ui.footer.* / tmux launcher snippets with detected current state; 1/2/3/4, Tab, or Left/Right switch tabs; integration options are edited in S Settings > Integrations; press P again, Esc, q, or click [x] to close",
+        total_width,
+    ));
+
+    lines.extend(help_wrapped_detail_lines(
+        "Q",
+        "open the decorative effects overlay (화면 보호기 / 화면 효과): banner / confetti / matrix / snow / fireworks / plasma / sampler. Also auto-opens as an idle screensaver and fires a celebration on a successful prompt-send accept when the [fx] block enables them; any key or mouse click dismisses it. Configure via [fx] in the loaded TOML (enabled, effect, hotkey_enabled, screensaver_enabled + screensaver_idle_secs, celebration_enabled, duration_secs)",
         total_width,
     ));
 

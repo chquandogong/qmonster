@@ -266,14 +266,27 @@ fn load_claude_settings(sink: &dyn EventSink) -> ClaudeSettings {
 fn sweep_retention(paths: &QmonsterPaths, ctx: &Context<TmuxSource, DesktopNotifier>) {
     match sweep(paths, ctx.config.logging.retention_days) {
         Ok(report) => {
-            if report.files_removed > 0 {
+            let db_rows_pruned = report.audit_rows_deleted
+                + report.token_usage_rows_deleted
+                + report.anomaly_rows_deleted
+                + report.cost_rows_deleted;
+            if report.files_removed > 0 || db_rows_pruned > 0 || report.legacy_tables_dropped > 0 {
                 ctx.sink.record(AuditEvent {
                     kind: AuditEventKind::RetentionSwept,
                     pane_id: "n/a".into(),
                     severity: Severity::Safe,
                     summary: format!(
-                        "retention: removed {} file(s), {} byte(s); kept {}",
-                        report.files_removed, report.bytes_removed, report.files_kept
+                        "retention: removed {} file(s), {} byte(s), kept {}; \
+                         db rows pruned: {} audit, {} token, {} anomaly, {} cost; \
+                         {} legacy table(s) dropped",
+                        report.files_removed,
+                        report.bytes_removed,
+                        report.files_kept,
+                        report.audit_rows_deleted,
+                        report.token_usage_rows_deleted,
+                        report.anomaly_rows_deleted,
+                        report.cost_rows_deleted,
+                        report.legacy_tables_dropped,
                     ),
                     provider: None,
                     role: None,

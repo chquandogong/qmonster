@@ -80,6 +80,10 @@ where
         crate::ui::provider_setup::ProviderSetupOverlay::from_config(&ctx.config);
     let mut action_explainer = crate::app::action_explainer::ActionExplainModal::new();
     let mut hover_help = HoverHelpState::new();
+    // Restored v3.1.4: decorative effects overlay (Q hotkey, prompt-send
+    // celebration, idle screensaver). Inert until a trigger fires.
+    let mut fx_overlay = crate::app::fx_overlay::FxOverlay::new();
+    let mut last_user_activity = startup_now;
 
     let mut last_alert_click: Option<AlertMouseClick> = None;
     let mut last_pane_idle_states: HashMap<String, Option<IdleCause>> = HashMap::new();
@@ -128,6 +132,30 @@ where
                         .flatten()
                 });
                 dashboard.audit_recent_severity = audit_recent_severity;
+                // Restored v3.1.4: idle screensaver auto-trigger +
+                // per-frame scene step. Pure gating helper keeps this
+                // unit-testable; `step` advances the active effect's
+                // particles / banner / streams.
+                {
+                    let term_size = terminal.size()?;
+                    if crate::app::fx_overlay::should_auto_open_screensaver(
+                        &ctx.config.fx,
+                        &fx_overlay,
+                        last_user_activity,
+                        now,
+                    ) {
+                        fx_overlay.open(
+                            &ctx.config.fx,
+                            crate::app::fx_overlay::FxTrigger::Screensaver,
+                            now,
+                            term_size.width,
+                            term_size.height,
+                        );
+                    }
+                    if fx_overlay.is_open() {
+                        fx_overlay.step(now, term_size.width, term_size.height);
+                    }
+                }
                 terminal.draw(|frame| {
                     render_dashboard_frame(
                         frame,
@@ -162,13 +190,34 @@ where
                             config: &ctx.config,
                             ime_active: ctx.ime_state.is_active(now),
                             alert_filter: alert_filter_snapshot.as_deref(),
+                            fx_overlay: &fx_overlay,
+                            fx_text: ctx.config.fx.text.as_str(),
                         },
                     );
                 })?;
 
-                if event::poll(Duration::from_millis(100))? {
+                // Restored v3.1.4: tighten poll cadence to ~30 FPS while
+                // the fx overlay is open so banner / confetti / matrix
+                // animate smoothly; closed → keep the 100ms cadence so
+                // the quiet path stays cheap.
+                let poll_ms = if fx_overlay.is_open() {
+                    crate::app::fx_state::FX_FRAME_INTERVAL_MS
+                } else {
+                    100
+                };
+                if event::poll(Duration::from_millis(poll_ms))? {
                     match event::read()? {
                         Event::Key(k) if k.kind == KeyEventKind::Press => {
+                            // Restored v3.1.4: any keypress refreshes the
+                            // screensaver idle clock; while the fx overlay
+                            // is open a keypress dismisses it and is
+                            // consumed so the operator regains control on
+                            // a single press.
+                            last_user_activity = Instant::now();
+                            if fx_overlay.is_open() {
+                                fx_overlay.dismiss();
+                                continue;
+                            }
                             // v1.51.0: feed Char keystrokes into the heuristic
                             // IME indicator BEFORE per-overlay dispatch so it
                             // observes keys consumed by any modal as well as
@@ -296,6 +345,13 @@ where
                                     KeyCode::Enter => {
                                         if let Some(action) = action_explainer.pending().cloned() {
                                             action_explainer.mark_seen(&action);
+                                            // Restored v3.1.4: capture the accept edge
+                                            // before confirm so celebration fires only
+                                            // on an AcceptPromptSend.
+                                            let was_accept = matches!(
+                                                action,
+                                                crate::app::action_explainer::PendingAction::AcceptPromptSend { .. }
+                                            );
                                             let notice = confirm_pending_action(
                                                 &action,
                                                 &ctx.source,
@@ -306,6 +362,19 @@ where
                                             );
                                             action_explainer.close();
                                             dashboard.push_notice(notice, now);
+                                            if was_accept
+                                                && ctx.config.fx.celebration_enabled
+                                                && ctx.config.fx.enabled
+                                            {
+                                                let term_size = terminal.size()?;
+                                                fx_overlay.open(
+                                                    &ctx.config.fx,
+                                                    crate::app::fx_overlay::FxTrigger::Celebration,
+                                                    now,
+                                                    term_size.width,
+                                                    term_size.height,
+                                                );
+                                            }
                                         }
                                         continue;
                                     }
@@ -445,6 +514,21 @@ where
                                 KeyCode::Char('P') => {
                                     provider_setup_overlay.sync_from_config(&ctx.config);
                                     provider_setup_overlay.open();
+                                }
+                                // Restored v3.1.4: `Q` opens the decorative fx
+                                // overlay (manual hotkey trigger). Gated so an
+                                // overlay owning the keyboard receives Q as text.
+                                KeyCode::Char('Q')
+                                    if dashboard_fx_hotkey_allowed(k.code, &ctx.config, false) =>
+                                {
+                                    let term_size = terminal.size()?;
+                                    fx_overlay.open(
+                                        &ctx.config.fx,
+                                        crate::app::fx_overlay::FxTrigger::Hotkey,
+                                        now,
+                                        term_size.width,
+                                        term_size.height,
+                                    );
                                 }
                                 KeyCode::Char('t') => {
                                     open_target_picker(&ctx.source, target_picker.controller());
@@ -621,6 +705,21 @@ where
                                             ctx.config.actions.allow_auto_prompt_send,
                                         );
                                         dashboard.push_notice(notice, Instant::now());
+                                        // Restored v3.1.4: celebration confetti on a
+                                        // direct (no-explainer) prompt-send accept.
+                                        if accepting
+                                            && ctx.config.fx.celebration_enabled
+                                            && ctx.config.fx.enabled
+                                        {
+                                            let term_size = terminal.size()?;
+                                            fx_overlay.open(
+                                                &ctx.config.fx,
+                                                crate::app::fx_overlay::FxTrigger::Celebration,
+                                                Instant::now(),
+                                                term_size.width,
+                                                term_size.height,
+                                            );
+                                        }
                                     }
                                 }
                                 _ => {}
@@ -630,6 +729,14 @@ where
                             let size = terminal.size()?;
                             let viewport = Rect::new(0, 0, size.width, size.height);
                             let now = Instant::now();
+                            // Restored v3.1.4: any mouse event refreshes the
+                            // screensaver idle clock; a click dismisses the fx
+                            // overlay and is consumed.
+                            last_user_activity = now;
+                            if fx_overlay.is_open() && matches!(m.kind, MouseEventKind::Down(_)) {
+                                fx_overlay.dismiss();
+                                continue;
+                            }
                             let overlay_mouse_owner = settings_overlay.is_open()
                                 || provider_setup_overlay.is_open()
                                 || action_explainer.is_open()
@@ -827,6 +934,21 @@ fn ring_terminal_bell() {
     let _ = out.flush();
 }
 
+/// Restored v3.1.4: gate for the `Q` decorative-fx hotkey. Fires only
+/// when no overlay owns the keyboard and the operator has `[fx]`
+/// hotkey + effects enabled, so an overlay in edit/input mode receives
+/// `Q` as text instead of opening the overlay.
+fn dashboard_fx_hotkey_allowed(
+    code: KeyCode,
+    config: &crate::app::config::QmonsterConfig,
+    overlay_owns_keyboard: bool,
+) -> bool {
+    matches!(code, KeyCode::Char('Q'))
+        && !overlay_owns_keyboard
+        && config.fx.hotkey_enabled
+        && config.fx.enabled
+}
+
 fn matches_originating_key(
     pending: Option<&crate::app::action_explainer::PendingAction>,
     c: char,
@@ -914,5 +1036,48 @@ fn confirm_pending_action<P: crate::tmux::polling::PaneSource>(
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod fx_hotkey_tests {
+    use super::dashboard_fx_hotkey_allowed;
+    use crate::app::config::QmonsterConfig;
+    use crossterm::event::KeyCode;
+
+    #[test]
+    fn fx_hotkey_gated_by_enabled_flags_and_overlay_focus() {
+        let mut config = QmonsterConfig::defaults();
+        config.fx.enabled = true;
+        config.fx.hotkey_enabled = true;
+        assert!(
+            dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, false),
+            "Q opens fx when enabled and no overlay owns the keyboard"
+        );
+        assert!(
+            !dashboard_fx_hotkey_allowed(KeyCode::Char('Q'), &config, true),
+            "an overlay owning the keyboard must receive Q as text, not open fx"
+        );
+
+        config.fx.hotkey_enabled = false;
+        assert!(!dashboard_fx_hotkey_allowed(
+            KeyCode::Char('Q'),
+            &config,
+            false
+        ));
+
+        config.fx.hotkey_enabled = true;
+        config.fx.enabled = false;
+        assert!(!dashboard_fx_hotkey_allowed(
+            KeyCode::Char('Q'),
+            &config,
+            false
+        ));
+
+        config.fx.enabled = true;
+        assert!(
+            !dashboard_fx_hotkey_allowed(KeyCode::Char('x'), &config, false),
+            "a non-Q key never opens fx"
+        );
     }
 }

@@ -42,6 +42,8 @@ pub struct QmonsterConfig {
     pub profile_switch: ProfileSwitchConfig,
     #[serde(default)]
     pub ux: UxConfig,
+    #[serde(default)]
+    pub fx: FxConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -941,6 +943,93 @@ impl QuotaConfig {
 /// Shared shape for per-provider context/quota threshold overrides.
 /// `CostConfig` keeps its own provider-override struct because USD
 /// thresholds use a different unit (f64 USD vs f32 fraction).
+/// Restored in v3.1.4 (originally v1.53.0; cut in the v3.0.0 narrow
+/// reduction, Slice 3). Optional decorative effects.
+///
+/// Three triggers are supported:
+/// - operator hotkey `Q` (`hotkey_enabled = true`)
+/// - celebration on a successful prompt-send accept
+///   (`celebration_enabled = true`)
+/// - screensaver after `screensaver_idle_secs` of no input
+///   (`screensaver_enabled = true`)
+///
+/// Click anywhere or press any key to dismiss. While the overlay is
+/// active the main loop tightens its `event::poll` to ~33ms (30 FPS);
+/// while inactive the regular 100ms cadence is preserved so the effect
+/// adds zero cost to the quiet path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FxConfig {
+    pub enabled: bool,
+    pub text: String,
+    pub effect: FxEffect,
+    /// Auto-dismiss after this many seconds. 0 means "stay until
+    /// dismissed by click/keypress".
+    pub duration_secs: u32,
+    pub hotkey_enabled: bool,
+    pub celebration_enabled: bool,
+    pub screensaver_enabled: bool,
+    pub screensaver_idle_secs: u32,
+}
+
+impl Default for FxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            text: "~O~ Qmonster".to_string(),
+            effect: FxEffect::Banner,
+            duration_secs: 50,
+            hotkey_enabled: true,
+            celebration_enabled: false,
+            screensaver_enabled: false,
+            screensaver_idle_secs: 600,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum FxEffect {
+    Banner,
+    Confetti,
+    Matrix,
+    /// snowflakes drifting top→bottom with horizontal sway.
+    Snow,
+    /// rockets arc up + explode into gravity-bound sparks.
+    Fireworks,
+    /// full-screen sin/cos field; per-cell color cycles.
+    Plasma,
+    /// meta-scene that auto-cycles through every other effect every
+    /// ~5 seconds so the operator can "taste" them all.
+    Sampler,
+}
+
+impl FxEffect {
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Banner => Self::Confetti,
+            Self::Confetti => Self::Matrix,
+            Self::Matrix => Self::Snow,
+            Self::Snow => Self::Fireworks,
+            Self::Fireworks => Self::Plasma,
+            Self::Plasma => Self::Sampler,
+            Self::Sampler => Self::Banner,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Banner => "banner",
+            Self::Confetti => "confetti",
+            Self::Matrix => "matrix",
+            Self::Snow => "snow",
+            Self::Fireworks => "fireworks",
+            Self::Plasma => "plasma",
+            Self::Sampler => "sampler",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PressureProviderConfig {
     pub warning_pct: f32,
@@ -967,6 +1056,7 @@ impl QmonsterConfig {
             anomaly: AnomalyConfig::default(),
             profile_switch: ProfileSwitchConfig::default(),
             ux: UxConfig::default(),
+            fx: FxConfig::default(),
         }
     }
 }
