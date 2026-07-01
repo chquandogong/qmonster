@@ -148,10 +148,18 @@ mod tests {
         // symmetric deselect: up off the top → clean; down off the bottom → clean
         s.select(Some(0));
         move_pane_selection(&mut s, 3, -1);
-        assert_eq!(s.selected(), None, "up from the first pane returns to clean");
+        assert_eq!(
+            s.selected(),
+            None,
+            "up from the first pane returns to clean"
+        );
         s.select(Some(2));
         move_pane_selection(&mut s, 3, 1);
-        assert_eq!(s.selected(), None, "down from the last pane returns to clean");
+        assert_eq!(
+            s.selected(),
+            None,
+            "down from the last pane returns to clean"
+        );
 
         // interior steps just move
         s.select(Some(1));
