@@ -19,7 +19,7 @@ thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 notify-rust = "4"
 directories = "5"
-rusqlite = { version = "0.39", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 unicode-width = "0.1"
 
