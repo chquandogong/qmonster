@@ -8,6 +8,23 @@ updates:
       time: "09:00"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
+    # Consolidate routine bumps into one PR so strict branch protection
+    # doesn't force a re-rebase per dependency. NOTE: for pre-1.0 crates
+    # Dependabot classifies 0.x minor bumps (e.g. ratatui 0.28->0.30) as
+    # "minor", so those land in this group too — review the group PR.
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # rusqlite >=0.40 pulls libsqlite3-sys >=0.38, whose build script
+      # uses the nightly-only `cfg_select` feature — fails on stable and
+      # on MSRV 1.88 (see closed PR #24, 2026-07-06). Remove this once
+      # libsqlite3-sys ships a stable-compatible release.
+      - dependency-name: "rusqlite"
+        versions: [">=0.40"]
 
   - package-ecosystem: npm
     directory: /
@@ -17,6 +34,12 @@ updates:
       time: "09:15"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -26,3 +49,9 @@ updates:
       time: "09:30"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
+    groups:
+      github-actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
