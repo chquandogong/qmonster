@@ -94,6 +94,7 @@ where
             title: pane.title.clone(),
             current_command: effective_command.clone(),
             tail: parse_tail.clone(),
+            agent_hint: pane.agent_hint.clone(),
         };
         let resolved = ctx.resolver.resolve(&raw);
 

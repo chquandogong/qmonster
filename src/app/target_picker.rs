@@ -711,6 +711,7 @@ mod tests {
             dead: false,
             tail: String::new(),
             pane_pid: None, // F-1: test fixture; production rows fill from tmux
+            agent_hint: None,
         }
     }
 

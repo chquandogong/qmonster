@@ -169,6 +169,7 @@ impl HerdrSource {
             dead: false,
             tail,
             pane_pid,
+            agent_hint: pane.agent,
         }
     }
 }

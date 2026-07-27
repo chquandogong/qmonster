@@ -36,6 +36,11 @@ pub struct RawPaneSnapshot {
     /// the actual AI CLI must walk descendants from this PID via
     /// `adapters::process_memory::read_descendant_rss_mb`.
     pub pane_pid: Option<u32>,
+    /// v3.2.0: the workspace manager's own agent detection, passed
+    /// through opaquely (herdr `agent` field, e.g. "claude"). Always
+    /// `None` from tmux acquisition. Interpretation happens in
+    /// `domain/identity.rs` only.
+    pub agent_hint: Option<String>,
 }
 
 pub fn parse_list_panes_row(line: &str) -> Option<RawPaneSnapshot> {
@@ -55,6 +60,7 @@ pub fn parse_list_panes_row(line: &str) -> Option<RawPaneSnapshot> {
         dead: parts[7].trim() == "1",
         tail: String::new(),
         pane_pid,
+        agent_hint: None,
     })
 }
 

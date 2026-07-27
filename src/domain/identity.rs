@@ -8,6 +8,11 @@ pub struct RawPaneInput {
     pub title: String,
     pub current_command: String,
     pub tail: String,
+    /// v3.2.0: the workspace manager's own agent detection (herdr
+    /// `agent` field), passed through opaquely by the acquisition
+    /// layer. `None` for tmux panes. Interpreted only here (r2
+    /// boundary: `tmux/`/`herdr/` never map provider semantics).
+    pub agent_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -105,6 +110,38 @@ impl IdentityResolver {
                     provider: parsed.0,
                     instance: parsed.1,
                     role: parsed.2,
+                },
+                confidence,
+            };
+        }
+
+        // herdr native agent detection (agent_hint). Outranks the
+        // title-keyword heuristics below because it derives from the
+        // workspace manager's own process/terminal detection, but
+        // never outranks a canonical `provider:instance:role` label
+        // (the block above). Role uses the operator's fixed tab
+        // convention (hs.sh / ts.sh): claude→main, codex→review,
+        // agy/gemini→research.
+        let hint_provider = raw
+            .agent_hint
+            .as_deref()
+            .map(detect_provider_command)
+            .unwrap_or(Provider::Unknown);
+        if hint_provider != Provider::Unknown {
+            let confidence = if providers_conflict(hint_provider, cmd_provider) {
+                IdentityConfidence::Conflict
+            } else if cmd_provider != Provider::Unknown {
+                // herdr detection and the process walk agree.
+                IdentityConfidence::High
+            } else {
+                IdentityConfidence::Medium
+            };
+            return ResolvedIdentity {
+                identity: PaneIdentity {
+                    pane_id: raw.pane_id.clone(),
+                    provider: hint_provider,
+                    instance: 1,
+                    role: hint_role_convention(hint_provider),
                 },
                 confidence,
             };
@@ -252,6 +289,19 @@ fn fallback_role(provider: Provider, confidence: IdentityConfidence) -> Role {
     }
 }
 
+/// Operator's fixed tab convention (ts.sh / hs.sh layouts): used ONLY
+/// on the agent_hint path so tmux fallback behavior stays byte-
+/// identical (`fallback_role` below is untouched).
+fn hint_role_convention(provider: Provider) -> Role {
+    match provider {
+        Provider::Claude => Role::Main,
+        Provider::Codex => Role::Review,
+        Provider::Gemini | Provider::Antigravity => Role::Research,
+        Provider::Qmonster => Role::Monitor,
+        Provider::Unknown => Role::Unknown,
+    }
+}
+
 fn detect_provider_tail(s: &str) -> (Provider, IdentityConfidence) {
     let lower = s.to_lowercase();
     if looks_like_qmonster_monitor(&lower) {
@@ -354,7 +404,75 @@ mod tests {
             title: title.into(),
             current_command: cmd.into(),
             tail: tail.into(),
+            agent_hint: None,
         }
+    }
+
+    fn raw_with_hint(title: &str, cmd: &str, hint: &str) -> RawPaneInput {
+        RawPaneInput {
+            pane_id: "w1:p5".into(),
+            title: title.into(),
+            current_command: cmd.into(),
+            tail: String::new(),
+            agent_hint: Some(hint.into()),
+        }
+    }
+
+    #[test]
+    fn agent_hint_resolves_provider_and_convention_role_without_canonical_title() {
+        // herdr detected codex; the process agrees → High + the
+        // operator's tab-convention role (codex → review).
+        let r = IdentityResolver::new().resolve(&raw_with_hint("dogu-3d-studio", "codex", "codex"));
+        assert_eq!(r.identity.provider, Provider::Codex);
+        assert_eq!(r.identity.role, Role::Review);
+        assert_eq!(r.confidence, IdentityConfidence::High);
+    }
+
+    #[test]
+    fn agent_hint_alone_is_medium_confidence() {
+        // Process walk came back generic (e.g. enrichment failed) —
+        // herdr's detection still resolves the provider at Medium.
+        let r = IdentityResolver::new().resolve(&raw_with_hint("some title", "", "claude"));
+        assert_eq!(r.identity.provider, Provider::Claude);
+        assert_eq!(r.identity.role, Role::Main);
+        assert_eq!(r.confidence, IdentityConfidence::Medium);
+    }
+
+    #[test]
+    fn agent_hint_conflicting_with_process_is_conflict() {
+        let r = IdentityResolver::new().resolve(&raw_with_hint("t", "codex", "claude"));
+        assert_eq!(r.identity.provider, Provider::Claude);
+        assert_eq!(r.confidence, IdentityConfidence::Conflict);
+    }
+
+    #[test]
+    fn agent_hint_maps_agy_and_gemini_to_research_role() {
+        let agy = IdentityResolver::new().resolve(&raw_with_hint("t", "agy", "agy"));
+        assert_eq!(agy.identity.provider, Provider::Antigravity);
+        assert_eq!(agy.identity.role, Role::Research);
+        let gem = IdentityResolver::new().resolve(&raw_with_hint("t", "gemini", "gemini"));
+        assert_eq!(gem.identity.provider, Provider::Gemini);
+        assert_eq!(gem.identity.role, Role::Research);
+    }
+
+    #[test]
+    fn canonical_pane_label_still_outranks_agent_hint() {
+        // hs.sh-set labels stay authoritative: the canonical-title
+        // block sits before the hint branch, so a mislabeled hint
+        // cannot override an explicit `provider:instance:role` label.
+        let mut input = raw_with_hint("agy:1:research", "agy", "claude");
+        input.current_command = "agy".into();
+        let r = IdentityResolver::new().resolve(&input);
+        assert_eq!(r.identity.provider, Provider::Antigravity);
+        assert_eq!(r.identity.role, Role::Research);
+    }
+
+    #[test]
+    fn unknown_agent_hint_falls_through_to_existing_chain() {
+        // herdr agent kinds Qmonster does not model (e.g. "cursor")
+        // must not derail the title/cmd/tail fallback chain.
+        let r = IdentityResolver::new().resolve(&raw_with_hint("Claude Code", "node", "cursor"));
+        assert_eq!(r.identity.provider, Provider::Claude);
     }
 
     #[test]
