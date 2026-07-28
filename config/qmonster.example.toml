@@ -31,10 +31,21 @@
 # Everything else belongs in docs/ai/* or tmux launcher conventions,
 # not in runtime TOML.
 
+[mux]
+# Terminal multiplexer backend (v3.2.0).
+#   auto   — use herdr when Qmonster runs inside a herdr pane (HERDR_ENV /
+#            HERDR_SOCKET_PATH present), otherwise the [tmux] behavior below.
+#   tmux   — force tmux ([tmux] source applies).
+#   herdr  — force the herdr CLI backend (global view across workspaces).
+backend = "auto"                   # auto | tmux | herdr
+# herdr only: also observe plain shell panes (default: agents + self only).
+include_shell_panes = false
+
 [tmux]
 # auto (default) tries control_mode first and falls back to polling if tmux
 # control-mode cannot attach at startup. Set polling or control_mode to force
 # one transport; explicit control_mode attach failures stay visible.
+# poll_interval_ms / capture_lines apply to the herdr backend as well.
 source = "auto"                    # auto | polling | control_mode
 poll_interval_ms = 2000
 capture_lines = 24

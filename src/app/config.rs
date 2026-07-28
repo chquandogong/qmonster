@@ -9,6 +9,8 @@ use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QmonsterConfig {
     #[serde(default)]
+    pub mux: MuxConfig,
+    #[serde(default)]
     pub tmux: TmuxConfig,
     #[serde(default)]
     pub actions: ActionsConfig,
@@ -44,6 +46,48 @@ pub struct QmonsterConfig {
     pub ux: UxConfig,
     #[serde(default)]
     pub fx: FxConfig,
+}
+
+/// v3.2.0 `[mux]`: which terminal-workspace backend acquisition uses.
+/// Sits ABOVE `[tmux]` — when the herdr backend is selected the
+/// `[tmux] source` setting is simply not consulted; `[tmux]`
+/// poll_interval_ms / capture_lines apply to every backend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MuxConfig {
+    pub backend: MuxBackend,
+    /// herdr only: also observe plain shell panes (default: agent
+    /// panes + Qmonster's own pane).
+    pub include_shell_panes: bool,
+}
+
+impl Default for MuxConfig {
+    fn default() -> Self {
+        Self {
+            backend: MuxBackend::Auto,
+            include_shell_panes: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MuxBackend {
+    /// herdr when running inside a herdr pane (`HERDR_ENV` /
+    /// `HERDR_SOCKET_PATH` present), otherwise the tmux path.
+    Auto,
+    Tmux,
+    Herdr,
+}
+
+impl MuxBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Tmux => "tmux",
+            Self::Herdr => "herdr",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1039,6 +1083,7 @@ pub struct PressureProviderConfig {
 impl QmonsterConfig {
     pub fn defaults() -> Self {
         Self {
+            mux: MuxConfig::default(),
             tmux: TmuxConfig::default(),
             actions: ActionsConfig::default(),
             refresh: RefreshConfig::default(),
@@ -1327,6 +1372,38 @@ source = "auto"
         assert_eq!(TmuxSourceMode::Auto.as_str(), "auto");
         assert_eq!(TmuxSourceMode::Polling.as_str(), "polling");
         assert_eq!(TmuxSourceMode::ControlMode.as_str(), "control_mode");
+    }
+
+    #[test]
+    fn mux_defaults_are_auto_backend_without_shell_panes() {
+        let cfg = QmonsterConfig::defaults();
+        assert_eq!(cfg.mux.backend, MuxBackend::Auto);
+        assert!(!cfg.mux.include_shell_panes);
+        // Absent [mux] section parses to the same defaults.
+        let parsed: QmonsterConfig = toml::from_str("").unwrap();
+        assert_eq!(parsed.mux.backend, MuxBackend::Auto);
+        assert!(!parsed.mux.include_shell_panes);
+    }
+
+    #[test]
+    fn mux_backend_loads_from_toml() {
+        let toml = r#"
+[mux]
+backend = "herdr"
+include_shell_panes = true
+"#;
+        let cfg: QmonsterConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.mux.backend, MuxBackend::Herdr);
+        assert!(cfg.mux.include_shell_panes);
+        let tmux_forced: QmonsterConfig = toml::from_str("[mux]\nbackend = \"tmux\"\n").unwrap();
+        assert_eq!(tmux_forced.mux.backend, MuxBackend::Tmux);
+    }
+
+    #[test]
+    fn mux_backend_as_str_matches_config_spelling() {
+        assert_eq!(MuxBackend::Auto.as_str(), "auto");
+        assert_eq!(MuxBackend::Tmux.as_str(), "tmux");
+        assert_eq!(MuxBackend::Herdr.as_str(), "herdr");
     }
 
     #[test]
