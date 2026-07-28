@@ -103,6 +103,7 @@ src/
   app/         # bootstrap/startup, layered config+safety-precedence, path resolution, event loop, tui-loop/dashboard-runtime/polling-tick/terminal-session/dashboard-render/keymap/target-picker/runtime-refresh/dashboard-state/modal/settings/operator-action/once-output/prompt-send/clipboard helpers, effect gate
   domain/      # pure types: identity, origin, signal, recommendation, audit, lifecycle
   tmux/        # PaneSource trait; auto source prefers control-mode with polling fallback
+  herdr/       # v3.2.0 herdr backend behind the same PaneSource trait (types/commands/source)
   adapters/    # per-provider tail parsers (no identity inference)
   policy/      # pure rules: alerts, advisories, concurrent, cache, reset,
                # agent_memory, auto_memory, identity_drift, idle, cost_budget,
@@ -197,6 +198,38 @@ through one process boundary with centralized stdout/stderr/error mapping.
 v1.16.37 renames poll-tick source failure/recovery notices to
 `tmux source` so polling and control-mode share the same
 operator-facing failure vocabulary.
+v3.2.0 adds a third acquisition backend: `src/herdr/` implements the
+same `PaneSource` trait against the **herdr** terminal-workspace
+manager (0.7.x, socket-API CLI). `[mux] backend = auto | tmux | herdr`
+sits above `[tmux] source`; `auto` selects herdr exactly when Qmonster
+runs inside a herdr pane (`HERDR_ENV` / `HERDR_SOCKET_PATH` present).
+Acquisition per tick: `workspace list` + `tab list` + `pane list`
+(JSON, serde-tolerant to unknown fields), then per included pane the
+default `pane read` (herdr's `--lines N` counts raw grid rows from the
+bottom, so top-anchored TUIs would return blanks — the capture_lines
+bound is applied post-trim in `capture_tail` instead) and
+`process-info` (foreground name/pid feed `current_command`/`pane_pid`;
+the descendant RSS walk is unchanged). Mapping: workspace label →
+`session_name`, tab label → `window_index`, pane label (hs.sh-set,
+`claude:1:main` style) → `title`. Included panes = herdr-detected
+agent panes + Qmonster's own pane (`HERDR_PANE_ID`); plain shells are
+opt-in via `[mux] include_shell_panes`. The backend is **global by
+design** (operator decision 2026-07-27): `current_target()` is `None`
+so one monitor spans every workspace; targets are workspace-granular
+(`window_index = "all"`) as groundwork for a future picker filter.
+`RawPaneSnapshot`/`RawPaneInput` gain `agent_hint` — herdr's own agent
+detection passed through opaquely (always `None` from tmux) and
+interpreted only in `domain/identity.rs`: canonical pane label >
+agent_hint (High when the process walk agrees, Medium alone, Conflict
+on disagreement) > title/command/tail heuristics; hint-path roles
+follow the operator tab convention (claude→main, codex→review,
+agy/gemini→research) while the tmux `fallback_role` stays untouched.
+`send_keys` maps to `pane send-text` + settle + `send-keys enter`
+(same two-step literal/submit contract as tmux). Errors map into the
+existing `PollingError` surface. `scripts/hs.sh` is the idempotent
+launcher (0-Monitor workspace + per-project 3-tab layout via the
+operator's ctcd/ccd/cgd aliases); `ts.sh` remains the tmux companion.
+
 v1.16.38 adds `scripts/run-qmonster-control-mode-once.sh`, a
 temporary-config `--once` launcher for operator control-mode trials that
 does not mutate the standard config file.

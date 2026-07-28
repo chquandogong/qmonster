@@ -34,11 +34,11 @@ taking destructive action by default.
 
 | Surface             | Current                                                |
 | ------------------- | ------------------------------------------------------ |
-| Release             | `v3.1.4`                                               |
-| npm                 | `qmonster@3.1.4`                                       |
+| Release             | `v3.2.0`                                               |
+| npm                 | `qmonster@3.2.0`                                       |
 | Rust                | `1.88+`                                                |
 | Runtime version     | `git describe --tags --always --dirty` from `build.rs` |
-| Cargo crate version | `3.1.4`                                                |
+| Cargo crate version | `3.2.0`                                                |
 
 ## Why
 
@@ -89,14 +89,31 @@ cargo build --release
 > provenance) instead of compiling locally:
 >
 > ```sh
-> gh release download v3.1.4 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
-> gh attestation verify qmonster-v3.1.4-linux-x86_64.tar.gz --owner chquandogong
-> tar -xzf qmonster-v3.1.4-linux-x86_64.tar.gz
-> ./qmonster-v3.1.4-linux-x86_64/qmonster --help
+> gh release download v3.2.0 --pattern '*-linux-x86_64.tar.gz' --repo chquandogong/qmonster
+> gh attestation verify qmonster-v3.2.0-linux-x86_64.tar.gz --owner chquandogong
+> tar -xzf qmonster-v3.2.0-linux-x86_64.tar.gz
+> ./qmonster-v3.2.0-linux-x86_64/qmonster --help
 > ```
 
-**Set the stage** — Qmonster watches a tmux session that already has
-your AI CLI panes running. Spin one up however you like, then attach:
+**Set the stage** — Qmonster watches the terminal workspace your AI
+CLIs already run in. Two backends are supported (v3.2.0):
+
+_herdr_ — one command builds the whole layout AND the global monitor:
+
+```bash
+# Ensures a "0-Monitor" workspace running Qmonster (created once,
+# never touched again) + a project workspace with 1-Claude / 2-Codex /
+# 3-Agy tabs, each split top/bottom, agents launched via your shell
+# aliases. Idempotent; --no-agents / --dry-run supported.
+./scripts/hs.sh ~/my-project
+```
+
+Inside a herdr pane Qmonster auto-selects the herdr backend
+(`[mux] backend = "auto"`) and observes agent panes across **all**
+workspaces — usage, quota windows, and reset ETAs per agent in one
+dashboard.
+
+_tmux_ — unchanged:
 
 ```bash
 tmux new -s ai
@@ -104,7 +121,8 @@ tmux new -s ai
 # (or copy the four-pane layout from Provider Setup → Tmux tab → installer)
 ```
 
-**Run it** — from another shell or pane:
+**Run it** — from another shell or pane (hs.sh already does this for
+the herdr monitor workspace):
 
 ```bash
 # Creates ~/.qmonster/config/qmonster.toml + pricing.toml from templates
@@ -131,7 +149,7 @@ The most useful first keys:
 | --------- | ----------------------------------------------------------------------------------------------------- |
 | `↑` / `↓` | Select a pane (expands it to full detail); step off either end to collapse everything back to compact |
 | `?`       | Help overlay with the full key map and badge legend                                                   |
-| `t`       | Pick which tmux session/window to observe                                                             |
+| `t`       | Pick which tmux session/window to observe (herdr backend: global view across all workspaces)          |
 | `S`       | Settings overlay (`/` filters parameters by label)                                                    |
 | `P`       | Provider Setup overlay (sidefile + tmux installers)                                                   |
 

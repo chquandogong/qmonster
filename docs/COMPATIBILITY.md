@@ -7,13 +7,14 @@ major provider updates.
 
 ## Required Runtime
 
-| Component | Supported                  | Notes                                                                   |
-| --------- | -------------------------- | ----------------------------------------------------------------------- |
-| OS        | Ubuntu/Linux               | Development and CI target Linux. Other Unix-like systems are unclaimed. |
-| Rust      | 1.88+                      | CI and release workflows install Rust 1.88.0.                           |
-| Node.js   | 18+                        | Required for the npm wrapper package. Release workflow uses Node 20.    |
-| tmux      | 3.x recommended            | Polling source is the default; control-mode remains opt-in.             |
-| SQLite    | bundled through `rusqlite` | Used for local audit and token sample storage.                          |
+| Component | Supported                  | Notes                                                                                                                                                                                                                                          |
+| --------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OS        | Ubuntu/Linux               | Development and CI target Linux. Other Unix-like systems are unclaimed.                                                                                                                                                                        |
+| Rust      | 1.88+                      | CI and release workflows install Rust 1.88.0.                                                                                                                                                                                                  |
+| Node.js   | 18+                        | Required for the npm wrapper package. Release workflow uses Node 20.                                                                                                                                                                           |
+| tmux      | 3.x recommended            | Polling source is the default; control-mode remains opt-in.                                                                                                                                                                                    |
+| herdr     | 0.7.x (protocol 17)        | v3.2.0 `[mux] backend` auto/herdr: acquisition via the `herdr` CLI (pane/tab/workspace list, default `pane read`, `process-info`, `send-text`/`send-keys`). Global view across workspaces; serde tolerates unknown fields on this 0.x surface. |
+| SQLite    | bundled through `rusqlite` | Used for local audit and token sample storage.                                                                                                                                                                                                 |
 
 ## Provider Surfaces
 

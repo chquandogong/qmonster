@@ -10,6 +10,12 @@
   `visible`, `new`, `auto-hide` 개수가 표시됩니다.
 - **Panes**: 선택된 session/window 안의 pane 목록입니다. 현재 선택된
   pane는 같은 리스트 안에서 상세 내용이 아래로 펼쳐집니다.
+  **herdr 백엔드(v3.2.0)**에서는 기본이 글로벌 뷰입니다 — 모든
+  워크스페이스의 에이전트 pane(+ Qmonster 자신)이 워크스페이스·탭
+  번호순으로 정렬되어 한 목록에 나오고, 카드 타이틀의
+  `session:window` 자리는 `워크스페이스라벨:탭라벨`(예:
+  `dogu-3d-studio:1-claude`)로 읽힙니다. 일반 셸 pane은 기본 제외
+  (`[mux] include_shell_panes`로 opt-in).
 - **Alerts/Panes divider**: Alerts와 Panes 사이의 한 줄 divider를
   드래그해 두 영역의 높이를 조절할 수 있습니다. 키보드에서는 `[` / `]`
   로 Alerts 영역을 줄이거나 키우고, `/`로 split 비율을 한 단계씩
@@ -518,6 +524,10 @@ script-low-token 프로파일 *이름*을 추천하는 별개 룰; lever payload
 - `PgUp/PgDn`: 페이지 단위 이동
 - `Home/End`: 처음/끝으로 이동
 - `t`: target picker 열기. 진입 키를 다시 누르면 overlay가 닫힙니다.
+  (herdr 백엔드에서는 target이 워크스페이스 단위입니다 — 기본은 All
+  Sessions(전체 워크스페이스 글로벌 뷰)이고, 피커에서 특정
+  워크스페이스를 고르면 그 워크스페이스의 에이전트 pane만 필터되며,
+  All Sessions를 다시 고르면 글로벌 뷰로 돌아옵니다.)
 - `Enter`: session 선택 후 window 단계로 이동, 또는 window 확정
 - `Left/Backspace`: window 단계에서 session 단계로 복귀
 - `?`: help/legend overlay
