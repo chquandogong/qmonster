@@ -1,5 +1,24 @@
 # CURRENT_STATE
 
+_Last updated: 2026-07-28 (Claude, **v3.2.0** — branch `herdr-backend`, atop the published v3.1.4. herdr backend + global monitor + `hs.sh`. lib 1311→1340, integration 62; `--all-targets` + clippy -D + fmt green; live-verified inside herdr. Codex diff-review + merge/push/tag/publish pending the §1.6 human gate. Detail in the v3.2.0 section directly below; the v3.1.4 header/prose preserved beneath.)_
+
+## v3.2.0 — herdr backend + global monitor + hs.sh (branch `herdr-backend`, pre-review)
+
+Operator session 2026-07-27/28: daily work moved from tmux to **herdr** (0.7.x standalone terminal-workspace manager; workspaces × tabs `1-Claude`/`2-Codex`/`3-Agy`, 2 stacked panes per tab) — the tmux-only acquisition was blind there, and herdr itself shows agent idle/working but **no usage/quota/reset**. Operator decisions: (1) **go**, as an **additive backend, no fork** (tmux era pinned by the published `v3.1.4` tag; tmux stays first-class); (2) **global monitor** (one Qmonster spans all workspaces — not a per-workspace 4th tab); (3) one-shot idempotent launcher using the `ctcd`/`ccd`/`cgd` shell aliases as single source of truth; (4) v3.2.0 minor on this branch.
+
+- **`src/herdr/`** (`types`/`commands`/`source`) behind the existing `PaneSource` trait: `workspace|tab|pane list` + default `pane read` + `process-info` per included pane; `send-text`+settle+`send-keys enter`. serde tolerates unknown fields (0.x surface); errors map to `PollingError`. **Live-caught fix:** herdr `--lines N` counts raw grid rows from the bottom → a top-anchored TUI (fresh codex) returned N blanks; now the default trimmed read + post-trim `capture_lines` bound (`tail_last_lines`, regression-tested).
+- **Global by design:** `current_target()=None`; targets = workspaces (`window_index="all"`); the existing `t` picker All Sessions ⇄ workspace filter works unchanged; `pane_panel_title` already prints `session:window` → cards read `dogu-3d-studio:1-claude` with **zero UI diff**. Included panes = herdr-detected agents + self (`HERDR_PANE_ID`); shells opt-in (`[mux] include_shell_panes`).
+- **`[mux] backend = auto|tmux|herdr`** (auto = herdr when `HERDR_ENV`/`HERDR_SOCKET_PATH` present; else the untouched `[tmux] source` path). `TmuxSource::Herdr` variant (enum rename deferred).
+- **`agent_hint`** (shared-struct change, `--all-targets` rule applied): opaque pass-through of herdr's `agent` field (tmux `None`), consumed only in `domain/identity.rs` — canonical label > hint (High with process agreement / Medium alone / Conflict on disagreement) > title/cmd/tail; hint-path roles per the operator tab convention (claude→Main, codex→Review, agy/gemini→Research); tmux `fallback_role` untouched.
+- **`scripts/hs.sh`** idempotent one-shot: ensure `0-Monitor` workspace running Qmonster (created once, **never touched when present**) + project workspace 3 tabs (top/bottom split, default-tab claim, canonical pane labels `claude:1:main`…, aliases sent **only into a verified interactive shell**, agent-detection poll), `--no-agents`/`--dry-run`, focus restore. `ts.sh` remains the tmux companion. Live-smoked: create + idempotent re-run + `workspace close` cleanup; **`0-Monitor` (w5) is live running `target/release/qmonster`**.
+- **Live verify (2026-07-28, inside herdr):** `--once` auto-selected `tmux source: herdr`; w1/w2/w4 agents rendered with workspace:tab context — Claude ctx/5h/7d/model/effort/PERM `[Official]`, Codex `context 0% of 353.4K` + `weekly 2%` + `PERM YOLO mode` `[Official]`, agy Research via convention role.
+- **Docs:** README (two-backend quick start + hs.sh), COMPATIBILITY (herdr row), ARCHITECTURE (herdr backend section), UI_MANUAL (global view + workspace picker), VALIDATION (v3.2.0 row). Version surfaces (package.json/Cargo.toml/Cargo.lock/VERSION.md/README) at 3.2.0. Spec/plan: `.docs/claude/Qmonster-2026-07-27-herdr-backend-global-monitor-spec.md` + `-plan.md`.
+- **Pending:** Codex diff-review (Codex + human contract) → merge to `main` → push/tag `v3.2.0`/release/npm (human gate §1.6). Deferred follow-ups: `api snapshot` single-call acquisition, `TmuxSource`→`MuxSource` rename, Settings-overlay `[mux]` rows (TOML-editable meanwhile).
+
+---
+
+_Prior header (v3.1.4 PUBLISHED) preserved below._
+
 _Last updated: 2026-07-01 (Claude, **v3.1.4** — on `main`, atop the published v3.1.3. Three-part operator session, all green + Codex-reviewed, **PUBLISHED 2026-07-01** (npm `latest = 3.1.4`, SLSA provenance v1, GitHub Release `v3.1.4`): (B) `audit_events` retention fix, (#3) app-wide panic hook + `crash.log`, (C) decorative FX overlay (화면 보호기/효과) restore. lib 1259→1311, integration 62; `--all-targets` + clippy -D + fmt green; Codex **approve-with-fixes** (no [P1]; 3 [P2] all closed). Detail in the v3.1.4 section directly below. Prior header (v3.1.3 PUBLISHED) preserved below.)._
 
 ## v3.1.4 — DB retention fix + panic hook + FX overlay restore (on `main`, pre-push)
