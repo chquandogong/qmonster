@@ -30,13 +30,18 @@ pub(crate) fn workspace_list_args() -> Vec<String> {
     vec!["workspace".into(), "list".into()]
 }
 
-pub(crate) fn pane_read_args(pane_id: &str, lines: usize) -> Vec<String> {
+/// Deliberately NO `--lines` flag: herdr counts `--lines N` from the
+/// bottom of the raw grid, so a top-anchored TUI (codex with a short
+/// transcript) yields N blank rows — verified live 2026-07-28
+/// (`--lines 24` → 0 bytes on a pane whose status line parses fine
+/// with the default read). The default read returns the trimmed
+/// recent content (~viewport-sized, 45-63 lines observed); the tail
+/// bound is applied in `HerdrSource::capture_tail` instead.
+pub(crate) fn pane_read_args(pane_id: &str) -> Vec<String> {
     vec![
         "pane".into(),
         "read".into(),
         pane_id.into(),
-        "--lines".into(),
-        lines.to_string(),
         "--format".into(),
         "text".into(),
     ]
@@ -96,8 +101,8 @@ mod tests {
         assert_eq!(tab_list_args(), vec!["tab", "list"]);
         assert_eq!(workspace_list_args(), vec!["workspace", "list"]);
         assert_eq!(
-            pane_read_args("w1:p1", 24),
-            vec!["pane", "read", "w1:p1", "--lines", "24", "--format", "text"]
+            pane_read_args("w1:p1"),
+            vec!["pane", "read", "w1:p1", "--format", "text"]
         );
         assert_eq!(
             process_info_args("w1:p1"),

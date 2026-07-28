@@ -86,6 +86,22 @@ pub(crate) fn assemble_snapshots(
     rows.into_iter().map(|(_, _, p)| p).collect()
 }
 
+/// tmux-equivalent tail semantics on top of the default herdr read:
+/// trim trailing blank rows (a top-anchored TUI leaves the bottom of
+/// the grid empty), then keep the last `lines` rows. herdr's own
+/// `--lines N` flag counts raw grid rows from the bottom and is NOT
+/// used (see `pane_read_args`).
+fn tail_last_lines(text: &str, lines: usize) -> String {
+    let rows: Vec<&str> = text.lines().collect();
+    let end = rows
+        .iter()
+        .rposition(|row| !row.trim().is_empty())
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let start = end.saturating_sub(lines.max(1));
+    rows[start..end].join("\n")
+}
+
 /// `"w1:t7"` → `"t7"`; an id without `:` passes through verbatim.
 fn tab_id_suffix(tab_id: &str) -> String {
     tab_id
@@ -206,7 +222,8 @@ impl PaneSource for HerdrSource {
     }
 
     fn capture_tail(&self, pane_id: &str, lines: usize) -> Result<String, PollingError> {
-        run_herdr(&pane_read_args(pane_id, lines))
+        let raw = run_herdr(&pane_read_args(pane_id))?;
+        Ok(tail_last_lines(&raw, lines))
     }
 
     fn send_keys(&self, pane_id: &str, text: &str) -> Result<(), PollingError> {
@@ -346,6 +363,41 @@ mod tests {
         );
         let ids: Vec<&str> = out.iter().map(|p| p.pane.pane_id.as_str()).collect();
         assert_eq!(ids, vec!["w1:p1", "w1:p5", "w2:p1"]);
+    }
+
+    #[test]
+    fn tail_last_lines_trims_trailing_blanks_then_bounds() {
+        // Regression for the live 2026-07-28 finding: a codex pane
+        // with a short transcript is top-anchored, so the raw read
+        // ends in blank grid rows; the status line must survive a
+        // 24-line tail bound.
+        let mut text = String::new();
+        for i in 0..10 {
+            text.push_str(&format!("row {i}\n"));
+        }
+        text.push_str("Context 0% used · weekly 98% left\n");
+        text.push_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+        let tail = tail_last_lines(&text, 24);
+        assert!(tail.ends_with("Context 0% used · weekly 98% left"));
+        assert_eq!(tail.lines().count(), 11);
+    }
+
+    #[test]
+    fn tail_last_lines_bounds_long_content_to_last_n() {
+        let text = (0..100)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let tail = tail_last_lines(&text, 24);
+        assert_eq!(tail.lines().count(), 24);
+        assert!(tail.starts_with("line 76"));
+        assert!(tail.ends_with("line 99"));
+    }
+
+    #[test]
+    fn tail_last_lines_handles_all_blank_and_zero_bounds() {
+        assert_eq!(tail_last_lines("\n\n\n", 24), "");
+        assert_eq!(tail_last_lines("a\nb", 0), "b", "lines is clamped to >= 1");
     }
 
     #[test]
