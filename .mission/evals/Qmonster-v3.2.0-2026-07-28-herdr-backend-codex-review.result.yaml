@@ -1,0 +1,180 @@
+review:
+  project: Qmonster
+  reviewer: codex
+  date: "2026-07-28"
+  target_versions:
+    - "3.2.0"
+  commit_range: "main (v3.1.4 published) → branch herdr-backend (29 files, +1531/-82 at review time). Pre-merge gate for v3.2.0."
+  scope: >
+    Pre-merge diff review of the v3.2.0 herdr slice. New src/herdr/
+    (types/commands/source) implements the existing PaneSource trait against the
+    herdr terminal-workspace manager CLI (0.7.x, protocol 17): workspace/tab/pane
+    list JSON envelopes, default `pane read` with a post-trim capture_lines bound
+    (herdr's own --lines N counts raw grid rows from the bottom, so top-anchored
+    TUIs returned blanks — live-caught), process-info for current_command/pane_pid,
+    send-text + settle + send-keys enter actuation. New [mux] backend
+    (auto|tmux|herdr; auto = herdr when HERDR_ENV/HERDR_SOCKET_PATH present) +
+    include_shell_panes, plus a TmuxSource::Herdr variant. Shared-struct change:
+    RawPaneSnapshot/RawPaneInput.agent_hint (opaque herdr agent detection; tmux
+    always None) consumed only in domain/identity.rs (canonical label > hint >
+    title/cmd/tail; hint roles claude→main, codex→review, agy/gemini→research;
+    tmux fallback_role untouched). Global monitor: current_target() None spans all
+    workspaces. New scripts/hs.sh idempotent launcher (0-Monitor ensure +
+    per-project 3-tab layout via the operator's ctcd/ccd/cgd aliases).
+  evidence_mode: "Live `codex exec --sandbox read-only -c model_reasoning_effort=medium` (codex-cli 0.145.0). The env's nested bwrap could not init loopback, so the FULL 2180-line unified diff was INLINED in the prompt (no repo reads); live-verification evidence (--all-targets/clippy/fmt green, --once under herdr, hs.sh smoke) supplied as given."
+  verdict: approve-with-fixes
+  score: 78
+  local_validation:
+    cargo_fmt_check: pass
+    cargo_clippy_all_targets_d_warnings: pass
+    cargo_test_all_targets: pass
+    test_counts: "pre-review 1340 lib + 62 integration (lib 1311 → 1340); post-remediation 1353 lib + 62 integration (+13: duplicate-label targeting, agent normalization, foreground selection, runner-injected source behavior, CLI timeout/diagnostics)"
+    live_verify: >
+      `--once` inside herdr auto-selected `tmux source: herdr` and rendered
+      w1/w2/w4 agents with workspace:tab context — Claude ctx/5h/7d/model/effort/
+      PERM [Official], Codex context/weekly/PERM YOLO [Official], agy Research via
+      the convention role, Qmonster self-pane Monitor. Re-verified after
+      remediation (no regression). hs.sh live-smoked: create + idempotent re-run +
+      `workspace close` cleanup; 0-Monitor (w5) left running target/release/qmonster.
+  guard_points_verified:
+    tmux_no_change: >
+      VERIFIED HELD by the reviewer: with herdr unselected the polling/control-mode
+      selection is intact, tmux rows set agent_hint: None, the field is only
+      threaded into identity resolution, fallback_role is unchanged, and explicit
+      `backend = "tmux"` ignores HERDR_* variables. No tmux command, capture, or
+      send-key behavior change found.
+    observe_only: >
+      VERIFIED HELD: no engine/policy/recommendation/anomaly/persistence/
+      runtime-refresh gate modified. A herdr `agy` hint resolves to
+      Provider::Antigravity and continues through the existing ObserveOnly
+      choke points. No SQLite schema, audit kind, or SignalSet field added.
+    actuation_gates: >
+      VERIFIED HELD at the application layer: the backend is reachable only via
+      the existing PaneSource::send_keys/send_key boundary; confirmation /
+      effect-runner paths untouched; a failed send-text prevents the submit key.
+      The separate hs.sh terminal-input surface required the P1 hardening below.
+    tail_fix: >
+      VERIFIED: default `pane read` + trailing-blank removal + post-trim last-N
+      bounding correctly avoids the documented --lines bottom-grid pitfall.
+  findings:
+    - id: CFX-320-1
+      severity: P1
+      title: "hs.sh: interactive shell not proven; monitor launch path unquoted"
+      location: "scripts/hs.sh (pane_is_shell / ensure_monitor)"
+      detail: >
+        pane_is_shell accepted any foreground process NAMED bash/zsh/…, which may
+        be a non-interactive shell running a script or `-c` command; separately the
+        monitor launch text was sent unquoted, so a checkout path containing spaces
+        would break and shell metacharacters could be reinterpreted.
+      status: closed
+      resolution: >
+        pane_is_shell now also requires argv length <= 1 (a bare interactive
+        invocation; `bash -c …` / script shells are rejected) via
+        process-info argv; the monitor launch path is `printf '%q'`-quoted before
+        send-text. The alias payloads (ctcd/ccd/cgd) are fixed identifiers from an
+        in-script table, never operator input, and are documented as such.
+    - id: CFX-320-2
+      severity: P1
+      title: "workspace targets keyed by display label, not a stable id"
+      location: "src/herdr/source.rs (available_targets / list_panes), scripts/hs.sh"
+      detail: >
+        available_targets emitted labels and list_panes filtered on session_name,
+        so two workspaces with the same label collapsed into one target — a
+        confirmed action intended for one workspace could address a same-labelled
+        pane in another. hs.sh had the matching ambiguity (`head -1` on a duplicate
+        label).
+      status: closed
+      resolution: >
+        Targets now carry the STABLE workspace_id in window_index (label stays in
+        session_name for display) and list_panes filters on
+        `target.window_index == pane.workspace_id`. hs.sh's ws_id_by_label exits
+        with an error when a label is ambiguous instead of mutating a guess.
+        Test: list_panes_filters_by_workspace_id_not_display_label (two "api"
+        workspaces stay distinct and filter independently).
+    - id: CFX-320-3
+      severity: P2
+      title: "first foreground_processes entry trusted for command + RSS root"
+      location: "src/herdr/source.rs (snapshot_for)"
+      detail: >
+        The plural response has no ordering contract; a helper/interpreter listed
+        first could displace the real CLI, causing Medium confidence, a false
+        Conflict, or the wrong descendant-memory root.
+      status: closed
+      resolution: >
+        New choose_foreground prefers the process whose name agrees with herdr's
+        agent kind, with a deterministic first-entry fallback when none agrees.
+        Test: choose_foreground_prefers_process_matching_agent_kind.
+    - id: CFX-320-4
+      severity: P2
+      title: 'empty / "unknown" agent values treated as agent evidence'
+      location: "src/herdr/source.rs (inclusion filter, agent_hint)"
+      detail: >
+        `pane.agent.is_some()` admitted an empty string or a future "unknown"
+        marker, letting a plain shell pane enter the default agents-only scope and
+        fall into title/cmd/tail heuristics as a false agent tile.
+      status: closed
+      resolution: >
+        New normalized_agent trims and rejects empty / case-insensitive "unknown";
+        it gates BOTH the inclusion filter and the agent_hint payload.
+        Test: normalized_agent_rejects_empty_and_unknown_values.
+    - id: CFX-320-5
+      severity: P2
+      title: "no CLI timeout; non-zero errors discard status and stdout"
+      location: "src/herdr/commands.rs (run_herdr)"
+      detail: >
+        A wedged herdr socket could stall a polling tick indefinitely, and a CLI
+        that reports structured error details on stdout produced an empty
+        PollingError::NonZero.
+      status: closed
+      resolution: >
+        run_herdr now goes through run_command_with_timeout (10s ceiling, piped io
+        drained on reader threads so a full pipe cannot deadlock the wait loop,
+        kill on expiry) and non-zero exits carry exit status + bounded (400-char)
+        stderr-then-stdout diagnostics. IMPLEMENTATION BUG CAUGHT WHILE FIXING:
+        joining the reader threads on the timeout path blocked for a forked
+        GRANDCHILD holding the pipe (`sh -c "sleep 30"` → the "timeout" took 30s);
+        the readers are now detached and the regression asserts elapsed < 5s
+        (measured 0.24s). Tests: success stdout, wedged-process timeout+elapsed,
+        status+stderr propagation, stdout-fallback diagnostics, bounded clamp.
+    - id: CFX-320-6
+      severity: P2
+      title: "source-level behavior untested (only pure helpers covered)"
+      location: "src/herdr/source.rs tests"
+      detail: >
+        Missing: per-pane read/process failure isolation, workspace target
+        filtering, duplicate labels, and send-text/send-keys sequencing including
+        the no-Enter-after-failed-send-text contract.
+      status: closed
+      resolution: >
+        The process boundary is now an injectable fn pointer (HerdrRunFn;
+        HerdrSource::with_runner) and scripted-runner tests cover per-pane
+        enrichment failure isolation, list-failure propagation, workspace-id
+        filtering, send_keys_aborts_submit_when_send_text_fails, and the ordered
+        send-text → enter success path.
+    - id: CFX-320-7
+      severity: P3
+      title: "package.json description still tmux-only"
+      location: "package.json:4"
+      status: closed
+      resolution: 'Now "Observe-first TUI for multi-CLI terminal workspaces (tmux and herdr)."'
+  self_found_during_remediation:
+    - id: QSELF-320-1
+      title: "initial_target collapsed herdr's global None into the first workspace"
+      detail: >
+        target_picker::initial_target falls back to the first available window when
+        current_target() is None — correct for tmux outside a session, but it
+        silently narrowed herdr's DELIBERATE global default to one workspace (the
+        live dashboard opened on `target dogu-3d-studio:all`, hiding the other
+        workspaces until the operator picked All Sessions).
+      resolution: >
+        New PaneSource::prefers_global_default (default false; herdr true) makes
+        initial_target return None for global-first sources. tmux behavior
+        unchanged. Test: herdr_source_prefers_global_default.
+  deferred_followups:
+    - "herdr api snapshot single-call acquisition (currently 1 list-trio + 2 calls per included pane per tick)."
+    - "TmuxSource → MuxSource rename (mechanical; deliberately out of this slice)."
+    - "Settings-overlay [mux] edit rows (TOML-editable meanwhile)."
+    - "Workspace-scoped target picker UX polish (the picker's session/window vocabulary still reads tmux-ish for herdr targets)."
+  human_gate:
+    status: pending
+    note: "Merge to main + push + tag v3.2.0 + GitHub release + npm publish remain the operator's section-1.6 decision."
