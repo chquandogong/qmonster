@@ -382,6 +382,12 @@ pub fn target_label(target: Option<&WindowTarget>) -> String {
 }
 
 pub fn initial_target<P: PaneSource>(source: &P) -> Option<WindowTarget> {
+    // Global-first sources (herdr) deliberately report no current
+    // target: `None` here means the All Sessions view, so the
+    // first-available-window fallback below must not fire for them.
+    if source.prefers_global_default() {
+        return None;
+    }
     source
         .current_target()
         .ok()

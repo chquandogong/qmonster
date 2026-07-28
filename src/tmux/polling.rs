@@ -46,6 +46,16 @@ pub trait PaneSource {
     fn send_key(&self, _pane_id: &str, _key: &str) -> Result<(), PollingError> {
         Ok(())
     }
+
+    /// v3.2.0: whether the dashboard should OPEN in the global
+    /// (all-targets) view when this source reports no current target.
+    /// tmux keeps `false`: outside a tmux session the picker falls
+    /// back to the first available window (historical behavior). The
+    /// herdr backend returns `true` — its `current_target()` is
+    /// deliberately `None` because one monitor spans every workspace.
+    fn prefers_global_default(&self) -> bool {
+        false
+    }
 }
 
 const DEFAULT_CAPTURE_LINES: usize = 24;

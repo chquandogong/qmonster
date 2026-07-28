@@ -75,6 +75,14 @@ impl PaneSource for TmuxSource {
             Self::Herdr(source) => source.send_key(pane_id, key),
         }
     }
+
+    fn prefers_global_default(&self) -> bool {
+        match self {
+            Self::Polling(source) => source.prefers_global_default(),
+            Self::ControlMode(source) => source.prefers_global_default(),
+            Self::Herdr(source) => source.prefers_global_default(),
+        }
+    }
 }
 
 #[cfg(test)]

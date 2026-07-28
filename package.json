@@ -1,7 +1,7 @@
 {
   "name": "qmonster",
   "version": "3.2.0",
-  "description": "Observe-first TUI for multi-CLI tmux development.",
+  "description": "Observe-first TUI for multi-CLI terminal workspaces (tmux and herdr).",
   "license": "MIT",
   "contributors": [
     "CHENGHAO QUAN <chquan@dogu.xyz>",

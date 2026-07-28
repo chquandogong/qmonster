@@ -101,9 +101,17 @@ hx() {
 }
 
 ws_id_by_label() {
-  herdr workspace list 2>/dev/null |
-    jq -r --arg l "$1" '.result.workspaces[] | select(.label == $l) | .workspace_id' |
-    head -1
+  local ids count
+  ids="$(herdr workspace list 2>/dev/null |
+    jq -r --arg l "$1" '.result.workspaces[] | select(.label == $l) | .workspace_id')"
+  count="$(printf '%s' "$ids" | grep -c . || true)"
+  if [[ "$count" -gt 1 ]]; then
+    # Labels are display strings, not unique keys — refusing beats
+    # silently picking one duplicate and mutating the wrong workspace.
+    echo "hs.sh: ERROR workspace label '$1' is ambiguous ($count matches: $(echo "$ids" | tr '\n' ' '))— rename duplicates or pass a unique --name" >&2
+    exit 1
+  fi
+  printf '%s\n' "$ids" | head -1
 }
 
 tab_id_by_label() { # <workspace_id> <label>
@@ -135,11 +143,21 @@ pane_fg_name() { # <pane_id>
     jq -r '.result.process_info.foreground_processes[0].name // ""'
 }
 
-pane_is_shell() { # <pane_id> — same allowlist as ts.sh
-  case "$(pane_fg_name "$1")" in
-    bash | sh | zsh | fish | dash | ksh | mksh | ash) return 0 ;;
+pane_is_shell() { # <pane_id> — interactive-shell PROOF, not just a name
+  # A shell running a script or `-c` command has extra argv entries;
+  # only a bare interactive invocation (argv = [shellname] or
+  # [-shellname] for login shells) may receive text. Same name
+  # allowlist as ts.sh.
+  local line name argc
+  line="$(herdr pane process-info --pane "$1" 2>/dev/null |
+    jq -r '.result.process_info.foreground_processes[0] | "\(.name // "")\t\((.argv // []) | length)"')"
+  name="${line%%$'\t'*}"
+  argc="${line##*$'\t'}"
+  case "$name" in
+    bash | sh | zsh | fish | dash | ksh | mksh | ash) ;;
     *) return 1 ;;
   esac
+  [[ "${argc:-99}" =~ ^[0-9]+$ ]] && [[ "$argc" -le 1 ]]
 }
 
 wait_for_shell() { # <pane_id> — new panes need a beat to spawn the shell
@@ -162,9 +180,12 @@ wait_for_agent() { # <pane_id> <kind> — poll herdr's own agent detection
   return 1
 }
 
-# Send an alias line into a pane — ONLY after verifying the foreground
-# process is an interactive shell (hard guard against the historical
-# send-keys-into-a-running-TUI incident).
+# Send an alias line into a pane — ONLY after proving the foreground
+# process is a bare interactive shell (hard guard against the
+# historical send-keys-into-a-running-TUI incident). The alias names
+# are fixed identifiers from the table above, never interpolated
+# operator input, so they need no quoting; the monitor launch path
+# %q-quotes its path because that IS derived from the filesystem.
 launch_alias_in_pane() { # <pane_id> <alias> <kind>
   local pane_id="$1" alias_cmd="$2" kind="$3"
   if [[ "$dry_run" -eq 1 ]]; then
@@ -208,7 +229,12 @@ ensure_monitor() {
     echo "hs.sh: WARN no shell pane in fresh $MONITOR_LABEL — launch Qmonster manually ($repo_root/scripts/run-qmonster.sh)" >&2
     return 0
   fi
-  hx pane send-text "$pane" "$repo_root/scripts/run-qmonster.sh"
+  # %q-quote the path: a checkout under a directory with spaces or
+  # shell metacharacters must arrive as ONE safe word, never as
+  # something the interactive shell could reinterpret.
+  local launch_q
+  launch_q="$(printf '%q' "$repo_root/scripts/run-qmonster.sh")"
+  hx pane send-text "$pane" "$launch_q"
   hx pane send-keys "$pane" enter
   hx pane rename "$pane" "qmonster:1:monitor"
 }
