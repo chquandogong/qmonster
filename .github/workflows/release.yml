@@ -224,7 +224,7 @@ jobs:
             dist/checksums.txt
 
       - name: Generate SBOM attestation
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-path: dist/qmonster-${{ env.TAG_NAME }}-linux-x86_64.tar.gz
           sbom-path: dist/qmonster-${{ env.TAG_NAME }}-sbom.spdx.json
