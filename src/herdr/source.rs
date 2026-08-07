@@ -218,14 +218,14 @@ impl HerdrSource {
         let agent_hint = normalized_agent(&pane).map(str::to_string);
         // Per-pane enrichment failures degrade that pane only (empty
         // command / no pid / empty tail), never the whole tick.
-        let (current_command, pane_pid) = fetch_with::<HerdrProcessInfo>(
+        let (current_command, pane_pid, agent_cwd) = fetch_with::<HerdrProcessInfo>(
             self.run,
             &process_info_args(&pane.pane_id),
             "process_info",
         )
         .ok()
         .and_then(|info| choose_foreground(info, agent_hint.as_deref()))
-        .map(|proc| (proc.name.unwrap_or_default(), proc.pid))
+        .map(|proc| (proc.name.unwrap_or_default(), proc.pid, proc.cwd))
         .unwrap_or_default();
         let tail = self
             .capture_tail(&pane.pane_id, self.capture_lines)
@@ -240,7 +240,17 @@ impl HerdrSource {
                 .or(pane.terminal_title_stripped)
                 .unwrap_or_default(),
             current_command,
-            current_path: pane.foreground_cwd.or(pane.cwd).unwrap_or_default(),
+            // The agent process's OWN cwd wins. Provider sidefiles are
+            // attributed to a pane by exact cwd equality, and the pane-level
+            // `foreground_cwd` follows whatever descendant is in the
+            // foreground — for a Claude pane with an MCP plugin child that is
+            // the plugin's directory, which matches no sidefile and silently
+            // drops cost/reset-window enrichment. The pane-level fields stay
+            // as fallbacks for panes whose process-info lookup failed.
+            current_path: agent_cwd
+                .or(pane.foreground_cwd)
+                .or(pane.cwd)
+                .unwrap_or_default(),
             active: pane.focused,
             dead: false,
             tail,
@@ -610,6 +620,37 @@ mod tests {
         assert_eq!(panes[1].tail, "", "failed read degrades to empty tail");
         assert_eq!(panes[1].current_command, "");
         assert_eq!(panes[1].pane_pid, None);
+    }
+
+    // Live-observed 2026-08-07, herdr protocol 17: a Claude pane running an
+    // MCP plugin child reports the CHILD's directory in the pane-level
+    // `foreground_cwd`, while `cwd` still holds the pane's own directory and
+    // `pane process-info` names the agent process with the right cwd.
+    const MCP_CHILD_WORKSPACES: &str =
+        r#"{"id":"x","result":{"workspaces":[{"workspace_id":"w1","label":"proj","number":1}]}}"#;
+    const MCP_CHILD_TABS: &str = r#"{"id":"x","result":{"tabs":[{"tab_id":"w1:t1","workspace_id":"w1","label":"1-Claude","number":1}]}}"#;
+    const MCP_CHILD_PANES: &str = r#"{"id":"x","result":{"panes":[{"pane_id":"w1:p1","workspace_id":"w1","tab_id":"w1:t1","agent":"claude","cwd":"/home/u/proj","foreground_cwd":"/home/u/.cache/plugins/telegram/0.0.6"}]}}"#;
+    const MCP_CHILD_PROCESS_INFO: &str = r#"{"id":"x","result":{"process_info":{"foreground_process_group_id":4789,"foreground_processes":[{"argv":["claude"],"cmdline":"claude","cwd":"/home/u/proj","name":"claude","pid":4789}]},"type":"pane_process_info"}}"#;
+
+    #[test]
+    fn current_path_follows_the_agent_process_not_an_mcp_child_cwd() {
+        script(&[
+            ("workspace list", Ok(MCP_CHILD_WORKSPACES)),
+            ("tab list", Ok(MCP_CHILD_TABS)),
+            ("pane list", Ok(MCP_CHILD_PANES)),
+            ("pane read w1:p1 --format text", Ok("tail\n")),
+            ("pane process-info --pane w1:p1", Ok(MCP_CHILD_PROCESS_INFO)),
+        ]);
+        let src = HerdrSource::with_runner(24, false, None, scripted_run);
+
+        let panes = src.list_panes(None).unwrap();
+
+        assert_eq!(panes.len(), 1);
+        assert_eq!(
+            panes[0].current_path, "/home/u/proj",
+            "sidefile attribution keys on the agent's own cwd; an MCP child's \
+             directory must never become the pane path"
+        );
     }
 
     #[test]
