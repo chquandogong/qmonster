@@ -327,9 +327,21 @@ fn claude_sidefile_process_confirmed(ctx: &ParserContext, proc_root: &std::path:
     };
     let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
     else {
+        // Third silent-decline path (with no-cwd-match and the ambiguity
+        // guard in claude_sidefile): the /proc walk found no descendant CLI,
+        // so attribution is skipped before the matcher is ever consulted.
+        crate::adapters::claude_sidefile::diag(|| {
+            format!("pane pid {pid}: no descendant CLI process found (attribution skipped)")
+        });
         return false;
     };
-    cli_process_basename_contains(&desc, "claude")
+    let ok = cli_process_basename_contains(&desc, "claude");
+    if !ok {
+        crate::adapters::claude_sidefile::diag(|| {
+            format!("pane pid {pid}: foreground CLI is {desc:?}, not claude (attribution skipped)")
+        });
+    }
+    ok
 }
 
 fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {

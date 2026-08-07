@@ -123,6 +123,18 @@ pub fn cache_hit_ratio(sidefile: &ClaudeSidefile) -> Option<f64> {
     Some(cached / total)
 }
 
+/// Opt-in diagnostics for the two ways attribution silently declines.
+///
+/// Both return `None` by design (enrichment is best-effort), which makes a
+/// downstream symptom — a cost or reset-window value blinking out for one
+/// tick — impossible to attribute without this. Env-gated because Qmonster's
+/// primary frontend is a TUI and stray stderr corrupts the display.
+pub(crate) fn diag(msg: impl FnOnce() -> String) {
+    if std::env::var_os("QMONSTER_SIDEFILE_DIAG").is_some() {
+        eprintln!("qmonster sidefile: {}", msg());
+    }
+}
+
 /// Locate the most-recently-modified sidefile JSON whose `cwd` field
 /// matches `current_path`. Returns None when:
 /// - The sidefile directory does not exist (operator hasn't applied
@@ -181,7 +193,10 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             }
         }
     }
-    let (newest_mtime, newest_sidefile) = distinct_sids.first()?;
+    let Some((newest_mtime, newest_sidefile)) = distinct_sids.first() else {
+        diag(|| format!("no sidefile matches cwd {current_path:?} (attribution skipped)"));
+        return None;
+    };
     // Ambiguity guard: two concurrently-active same-cwd Claude sessions with
     // DISTINCT session_ids can't be told apart by cwd alone — don't attribute;
     // leave the scrape authoritative. Mirrors the Codex rollout guard.
@@ -192,6 +207,13 @@ pub fn read_sidefile_for_path(home: &Path, current_path: &str) -> Option<ClaudeS
             .unwrap_or(Duration::ZERO)
             < AMBIGUITY_WINDOW
     {
+        diag(|| {
+            format!(
+                "two same-cwd sessions within {}s at {current_path:?} — ambiguity guard \
+                 declined attribution",
+                AMBIGUITY_WINDOW.as_secs()
+            )
+        });
         return None;
     }
     Some(newest_sidefile.clone())

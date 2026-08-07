@@ -240,16 +240,25 @@ impl HerdrSource {
                 .or(pane.terminal_title_stripped)
                 .unwrap_or_default(),
             current_command,
-            // The agent process's OWN cwd wins. Provider sidefiles are
-            // attributed to a pane by exact cwd equality, and the pane-level
-            // `foreground_cwd` follows whatever descendant is in the
-            // foreground — for a Claude pane with an MCP plugin child that is
-            // the plugin's directory, which matches no sidefile and silently
-            // drops cost/reset-window enrichment. The pane-level fields stay
-            // as fallbacks for panes whose process-info lookup failed.
+            // The agent process's OWN cwd wins, then the PANE's cwd, and
+            // only then the foreground descendant's.
+            //
+            // Provider sidefiles are attributed to a pane by exact cwd
+            // equality, and `foreground_cwd` follows whatever descendant
+            // currently holds the foreground — for a Claude pane with an MCP
+            // plugin child that is the plugin's cache directory, which
+            // matches no sidefile and silently drops cost + reset-window
+            // enrichment.
+            //
+            // `process_info` is an expected per-pane failure (no pid, busy
+            // /proc, timeout), so ordering `foreground_cwd` ahead of `cwd`
+            // re-exposed exactly that bug on the failing ticks — which read
+            // as a random flicker in the reset countdown rather than as a
+            // bug. `pane.cwd` is the pane's own directory and is what the
+            // sidefile records, so it must come first.
             current_path: agent_cwd
-                .or(pane.foreground_cwd)
                 .or(pane.cwd)
+                .or(pane.foreground_cwd)
                 .unwrap_or_default(),
             active: pane.focused,
             dead: false,
@@ -650,6 +659,31 @@ mod tests {
             panes[0].current_path, "/home/u/proj",
             "sidefile attribution keys on the agent's own cwd; an MCP child's \
              directory must never become the pane path"
+        );
+    }
+
+    #[test]
+    fn process_info_failure_falls_back_to_pane_cwd_not_the_foreground_child() {
+        // `pane process-info` is an expected per-pane failure (no pid, busy
+        // /proc, timeout). If the fallback lands on `foreground_cwd` it
+        // silently re-exposes the MCP-child bug on those ticks: sidefile
+        // attribution misses, and cost + reset windows blink out. Falling
+        // back to the pane's own cwd keeps the match working.
+        script(&[
+            ("workspace list", Ok(MCP_CHILD_WORKSPACES)),
+            ("tab list", Ok(MCP_CHILD_TABS)),
+            ("pane list", Ok(MCP_CHILD_PANES)),
+            ("pane read w1:p1 --format text", Ok("tail\n")),
+            // process-info deliberately unscripted → enrichment fails.
+        ]);
+        let src = HerdrSource::with_runner(24, false, None, scripted_run);
+
+        let panes = src.list_panes(None).unwrap();
+
+        assert_eq!(panes.len(), 1);
+        assert_eq!(
+            panes[0].current_path, "/home/u/proj",
+            "a failed process-info must not fall through to the child's cwd"
         );
     }
 
