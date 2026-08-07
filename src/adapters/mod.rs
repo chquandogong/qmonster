@@ -321,7 +321,27 @@ pub fn parse_for_with_environment(
     signals
 }
 
+/// True when `pane_pid` is itself the expected CLI.
+///
+/// `read_descendant_cli_process_*` skips `pane_pid` on the assumption it is
+/// the pane shell. Under herdr that assumption breaks: it can report the
+/// agent process directly (verified live — /proc/<pane_pid>/comm == "claude"),
+/// so the only remaining candidates were the CLI's own MCP children, one of
+/// which won and made the gate veto the real agent. Checking the pid itself
+/// only ever ADDS a positive match, so the misattribution guard keeps its
+/// teeth: a pane genuinely running something else still has no match
+/// anywhere and is still declined.
+fn pane_pid_is_cli(pid: u32, proc_root: &std::path::Path, kind: &str) -> bool {
+    process_memory::pid_comm_with_proc_root(pid, proc_root)
+        .is_some_and(|comm| comm.eq_ignore_ascii_case(kind))
+}
+
 fn claude_sidefile_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    if let Some(pid) = ctx.pane_pid
+        && pane_pid_is_cli(pid, proc_root, "claude")
+    {
+        return true;
+    }
     let Some(pid) = ctx.pane_pid else {
         return true;
     };
@@ -345,6 +365,11 @@ fn claude_sidefile_process_confirmed(ctx: &ParserContext, proc_root: &std::path:
 }
 
 fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    if let Some(pid) = ctx.pane_pid
+        && pane_pid_is_cli(pid, proc_root, "codex")
+    {
+        return true;
+    }
     let Some(pid) = ctx.pane_pid else { return true };
     let Some(desc) = process_memory::read_descendant_cli_process_with_proc_root(pid, proc_root)
     else {
@@ -354,6 +379,11 @@ fn codex_rollout_process_confirmed(ctx: &ParserContext, proc_root: &std::path::P
 }
 
 fn agy_process_confirmed(ctx: &ParserContext, proc_root: &std::path::Path) -> bool {
+    if let Some(pid) = ctx.pane_pid
+        && pane_pid_is_cli(pid, proc_root, "agy")
+    {
+        return true;
+    }
     // agy correlation is by shared `workspace` (cwd), which is weaker than
     // Claude session_id or Codex cwd+rollout. Without a confirmed descendant
     // `agy` process we must NOT attribute — return false (fail closed), unlike
@@ -608,6 +638,60 @@ mod sidefile_integration_tests {
                 .join(" "),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn sidefile_gate_confirms_when_the_pane_pid_is_itself_the_cli() {
+        // herdr can report the AGENT process as `pane_pid` (verified live:
+        // /proc/66196/comm == "claude"), not a shell wrapping it. The
+        // descendant walk skips pane_pid on the assumption it is the shell,
+        // so the only candidates left were the CLI's own MCP children —
+        // node/context7 won and the gate declined attribution, silently
+        // dropping cost + reset windows for that tick.
+        let proc_root = tempdir().unwrap();
+        let root = proc_root.path();
+        write_proc_pid(root, 100, "claude", &[101, 102]);
+        write_proc_cmdline(root, 100, &["claude"]);
+        write_proc_pid(root, 101, "node", &[]);
+        write_proc_cmdline(root, 101, &["node", "/x/context7-mcp"]);
+        write_proc_pid(root, 102, "bun", &[]);
+        write_proc_cmdline(root, 102, &["bun", "run", "--cwd", "/x/telegram"]);
+
+        let id = claude_id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.pane_pid = Some(100);
+
+        assert!(
+            claude_sidefile_process_confirmed(&c, root),
+            "pane_pid IS the claude process; its MCP children must not veto it"
+        );
+    }
+
+    #[test]
+    fn sidefile_gate_still_declines_a_pane_running_something_else() {
+        // The guard must keep its teeth: a pane whose CLI is genuinely not
+        // claude must not be attributed a Claude sidefile.
+        let proc_root = tempdir().unwrap();
+        let root = proc_root.path();
+        write_proc_pid(root, 200, "bash", &[201]);
+        write_proc_cmdline(root, 200, &["bash"]);
+        write_proc_pid(root, 201, "node", &[]);
+        write_proc_cmdline(root, 201, &["node", "/x/some-mcp"]);
+
+        let id = claude_id();
+        let pricing = PricingTable::empty();
+        let settings = ClaudeSettings::empty();
+        let history = PaneTailHistory::empty();
+        let mut c = ctx(&id, "", &pricing, &settings, &history);
+        c.pane_pid = Some(200);
+
+        assert!(
+            !claude_sidefile_process_confirmed(&c, root),
+            "no claude anywhere — attribution must stay declined"
+        );
     }
 
     fn write_proc_cmdline(root: &std::path::Path, pid: u32, argv: &[&str]) {

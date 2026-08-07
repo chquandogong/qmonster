@@ -154,6 +154,14 @@ fn read_pid_stats(pid: u32, proc_root: &Path) -> Option<(u64, u8)> {
     Some((rss, tier))
 }
 
+/// `comm` of a single pid. Exposed so the sidefile gates can ask whether
+/// `pane_pid` is ITSELF the CLI: `read_descendant_cli_process_*` skips
+/// pane_pid by design (it assumes a shell wrapping the CLI), but herdr can
+/// report the agent process directly as the pane pid.
+pub(crate) fn pid_comm_with_proc_root(pid: u32, proc_root: &Path) -> Option<String> {
+    read_pid_comm(pid, proc_root)
+}
+
 fn read_pid_comm(pid: u32, proc_root: &Path) -> Option<String> {
     let status_path: PathBuf = proc_root.join(pid.to_string()).join("status");
     let status = fs::read_to_string(&status_path).ok()?;
